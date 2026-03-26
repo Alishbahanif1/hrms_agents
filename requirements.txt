@@ -1,0 +1,18 @@
+# Azure Foundry / Agents
+azure-ai-projects
+azure-identity
+
+# LLM + tool calling helpers
+openai
+# HTTP client (to call your FastAPI backend)
+requests
+# Optional (env management)
+python-dotenv
+
+# Optional (better async support)
+httpx
+
+# Optional logging / debugging
+rich
+dotenv
+streamlit
