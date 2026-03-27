@@ -36,7 +36,7 @@ def handle_response(response, url):
 # 🔥 CREATE
 # =========================
 def create_employee(data, token):
-    url = f"{API_BASE_URL}/api/v1/employees"
+    url = f"{API_BASE_URL}/api/v1/employees/"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -55,7 +55,7 @@ def create_employee(data, token):
 # 🔥 GET ALL
 # =========================
 def get_employees(token):
-    url = f"{API_BASE_URL}/api/v1/employees"
+    url = f"{API_BASE_URL}/api/v1/employees/"
 
     headers = {
         "Authorization": f"Bearer {token}"

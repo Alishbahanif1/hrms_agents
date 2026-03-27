@@ -1,42 +1,48 @@
 import streamlit as st
+import uuid
+
 from agents.master_agent import run_master_agent
 from core.config import ACCESS_TOKEN
 
 token = ACCESS_TOKEN
 
-# 🔹 Page config
 st.set_page_config(page_title="HR AI Assistant", page_icon="🤖")
 
-# 🔹 Title
 st.title("🤖 HR AI Assistant")
-st.markdown("Create employees using natural language")
+st.markdown("Context-aware HR system")
 
-# 🔹 Session state
+# session id
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+# chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 🔹 Show history
+# display history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 🔹 Input
 user_input = st.chat_input("Type your request...")
 
 if user_input:
-    # Show user message
+
     st.session_state.messages.append({"role": "user", "content": user_input})
+
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # 🔥 Call agent safely
     with st.spinner("Thinking..."):
         try:
-            response = run_master_agent(user_input, token)
+            response = run_master_agent(
+                user_input,
+                token,
+                st.session_state.session_id
+            )
         except Exception as e:
             response = f"❌ Error: {str(e)}"
 
-    # Show bot response
     st.session_state.messages.append({
         "role": "assistant",
         "content": str(response)

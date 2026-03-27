@@ -1,9 +1,20 @@
-SESSION = {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJlbXBsb3llZV9pZCI6MSwiZXhwIjoxNzc0MzY0NzkwfQ.IRdb5MPTbsrRPoCKAgLIDvk6hUj5q_JWnj-t3iswTX0"
-}
+# Simple in-memory session store (replace with Redis later)
 
-def set_token(token: str):
-    SESSION["token"] = token
+sessions = {}
 
-def get_token():
-    return SESSION.get("token")
+
+def get_session(session_id: str):
+    if session_id not in sessions:
+        sessions[session_id] = {
+            "user": {
+                "token": None,
+                "role": None
+            },
+            "context": {
+                "last_module": None,
+                "last_intent": None,
+                "last_employee_id": None
+            },
+            "history": []  # 🔥 conversation memory
+        }
+    return sessions[session_id]
