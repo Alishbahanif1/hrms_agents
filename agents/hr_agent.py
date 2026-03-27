@@ -1,4 +1,121 @@
+import json
+from core.config import MODEL_NAME, AZURE_ENDPOINT
+from core.session import get_session
 
+# from agents.hr_agent import run_hr_agent
+# from agents.department_agent import run_department_agent
+
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential
+
+from tools.employee_tools import (
+    create_employee,
+    get_employees,
+    get_employee_by_id,
+    update_employee,
+    delete_employee
+)
+
+
+# =========================
+# 🔹 Azure Client
+# =========================
+project_client = AIProjectClient(
+    endpoint=AZURE_ENDPOINT,
+    credential=DefaultAzureCredential()
+)
+
+client = project_client.get_openai_client()
+
+# =========================
+# 🔥 TOOL SCHEMA (HR)
+# =========================
+tools = [
+    {
+        "type": "function",
+        "name": "create_employee",
+        "description": "Create a new employee",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "full_name": {"type": "string"},
+                "email": {"type": "string"},
+                "personal_email": {"type": "string"},
+                "department_id": {"type": "integer"},
+                "role_id": {"type": "integer"},
+                "manager_id": {"type": "integer"},
+                "joining_date": {"type": "string"},
+                "salary": {"type": "number"}
+            },
+            "required": [
+                "full_name",
+                "email",
+                "personal_email",
+                "department_id",
+                "role_id"
+            ]
+        }
+    },
+    {
+        "type": "function",
+        "name": "get_employees",
+        "description": "Get all employees with optional filters",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "page": {"type": "integer"},
+                "per_page": {"type": "integer"},
+                "search": {"type": "string"},
+                "is_active": {"type": "boolean"}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "name": "get_employee_by_id",
+        "description": "Get employee details by ID",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "integer"}
+            },
+            "required": ["employee_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "update_employee",
+        "description": "Update an employee",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "integer"},
+                "full_name": {"type": "string"},
+                "email": {"type": "string"},
+                "personal_email": {"type": "string"},
+                "department_id": {"type": "integer"},
+                "role_id": {"type": "integer"},
+                "manager_id": {"type": "integer"},
+                "joining_date": {"type": "string"},
+                "salary": {"type": "number"},
+                "is_active": {"type": "boolean"}
+            },
+            "required": ["employee_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "delete_employee",
+        "description": "Delete an employee",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "integer"}
+            },
+            "required": ["employee_id"]
+        }
+    }
+]
 
 # =========================
 # 🚀 HR AGENT
@@ -141,10 +258,9 @@ User:
 
     format_response = client.responses.create(
         model=MODEL_NAME,
-        input=format_prompt,
-
+        input=format_prompt
     )
 
-    output = response.output[0]
+    output = format_response.output[0]
 
     return format_response.output_text, meta
