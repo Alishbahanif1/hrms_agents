@@ -5,6 +5,7 @@ from core.session import get_session
 from agents.hr_agent import run_hr_agent
 from agents.department_agent import run_department_agent
 from agents.role_agent import run_roles_agent
+from agents.hiring_agent import run_hiring_agent
 
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -63,6 +64,7 @@ Rules:
 - department → departments
 - format → formatting request
 - roles → roles/permissions
+- hiring → hiring requests/job postings
 - sales → customers/orders
 
 IMPORTANT:
@@ -71,6 +73,7 @@ IMPORTANT:
 Return ONLY JSON:
 {{ "module": "hr" }}
 {{ "module": "roles" }}
+{{ "module": "hiring" }}
 """
     )
 
@@ -187,6 +190,8 @@ def run_master_agent(user_input: str, token: str, session_id: str):
         module = "roles"
     elif is_format_request(user_input):
         module = "format"
+    elif "hiring" in text or "job" in text:
+        module = "hiring"
     else:
         module = detect_module(user_input, session)
 
@@ -241,6 +246,14 @@ def run_master_agent(user_input: str, token: str, session_id: str):
     elif module == "roles":
 
         raw_response, meta = run_roles_agent(
+            user_input=user_input,
+            token=token,
+            session=session
+        )
+    
+    elif module == "hiring":
+
+        raw_response, meta = run_hiring_agent(
             user_input=user_input,
             token=token,
             session=session
