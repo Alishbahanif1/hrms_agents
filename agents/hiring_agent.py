@@ -1,25 +1,26 @@
 import json
-from azure.identity import DefaultAzureCredential
-from azure.ai.projects import AIProjectClient
+from urllib import response
+from core.llm_client import client
+from core.config import MODEL_NAME
 
-from core.config import AZURE_ENDPOINT, MODEL_NAME
-from tools.hiring_tools import *
-
-from tools.department_tools import get_departments
-
-project_client = AIProjectClient(
-    endpoint=AZURE_ENDPOINT,
-    credential=DefaultAzureCredential()
+from tools.hiring_tools import (
+    create_hiring_request,
+    get_hiring_requests,
+    get_hiring_request_by_id,
+    update_hiring_request,
+    delete_hiring_request,
+    create_job_posting,
+    get_job_postings,
+    get_job_posting_by_id,
+    update_job_posting,
+    delete_job_posting
 )
-
-client = project_client.get_openai_client()
 
 
 # =========================
 # 🔥 TOOL SCHEMA
 # =========================
 tools = [
-    # Hiring Requests
     {
         "type": "function",
         "name": "create_hiring_request",
@@ -34,21 +35,22 @@ tools = [
                 "experience_level": {"type": "string"},
                 "budget_range": {"type": "string"}
             },
-            "required": [
-                "department_id",
-                "role_title",
-                "manager_id",
-                "required_skills",
-                "experience_level",
-                "budget_range"
-            ]
+            "required": ["department_id", "role_title", "manager_id", "required_skills", "experience_level", "budget_range"]
         }
     },
     {
         "type": "function",
         "name": "get_hiring_requests",
-        "description": "Get hiring requests",
-        "parameters": {"type": "object", "properties": {}}
+        "description": "Get all hiring requests",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "page": {"type": "integer"},
+                "per_page": {"type": "integer"},
+                "search": {"type": "string"},
+                "is_active": {"type": "boolean"}
+            }
+        }
     },
     {
         "type": "function",
@@ -56,7 +58,9 @@ tools = [
         "description": "Get hiring request by ID",
         "parameters": {
             "type": "object",
-            "properties": {"hiring_id": {"type": "integer"}},
+            "properties": {
+                "hiring_id": {"type": "integer"}
+            },
             "required": ["hiring_id"]
         }
     },
@@ -66,7 +70,11 @@ tools = [
         "description": "Update hiring request",
         "parameters": {
             "type": "object",
-            "properties": {"hiring_id": {"type": "integer"}},
+            "properties": {
+                "hiring_id": {"type": "integer"},
+                "status": {"type": "string"},
+                "manager_approved": {"type": "boolean"}
+            },
             "required": ["hiring_id"]
         }
     },
@@ -76,12 +84,16 @@ tools = [
         "description": "Delete hiring request",
         "parameters": {
             "type": "object",
-            "properties": {"hiring_id": {"type": "integer"}},
+            "properties": {
+                "hiring_id": {"type": "integer"}
+            },
             "required": ["hiring_id"]
         }
     },
 
-    # Job Posting
+    # =========================
+    # 🔥 JOB POSTINGS
+    # =========================
     {
         "type": "function",
         "name": "create_job_posting",
@@ -97,8 +109,11 @@ tools = [
     {
         "type": "function",
         "name": "get_job_postings",
-        "description": "Get job postings",
-        "parameters": {"type": "object", "properties": {}}
+        "description": "Get all job postings",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
     },
     {
         "type": "function",
@@ -106,7 +121,9 @@ tools = [
         "description": "Get job posting by ID",
         "parameters": {
             "type": "object",
-            "properties": {"posting_id": {"type": "integer"}},
+            "properties": {
+                "posting_id": {"type": "integer"}
+            },
             "required": ["posting_id"]
         }
     },
@@ -116,7 +133,10 @@ tools = [
         "description": "Update job posting",
         "parameters": {
             "type": "object",
-            "properties": {"posting_id": {"type": "integer"}},
+            "properties": {
+                "posting_id": {"type": "integer"},
+                "status": {"type": "string"}
+            },
             "required": ["posting_id"]
         }
     },
@@ -126,7 +146,9 @@ tools = [
         "description": "Delete job posting",
         "parameters": {
             "type": "object",
-            "properties": {"posting_id": {"type": "integer"}},
+            "properties": {
+                "posting_id": {"type": "integer"}
+            },
             "required": ["posting_id"]
         }
     }
@@ -138,57 +160,78 @@ tools = [
 # =========================
 def run_hiring_agent(user_input: str, token: str, session=None):
 
-    # =========================
-    # 🧠 BUILD CONTEXT
-    # =========================
     history = session.get("history", [])[-10:] if session else []
 
     history_text = ""
     for msg in history:
         if not msg.get("content"):
             continue
-        history_text += f"{msg['role'].upper()}: {msg['content']}\n"
 
-    # =========================
-    # 🎯 MAIN PROMPT
-    # =========================
+        role = msg["role"].upper()
+        content = str(msg["content"])
+        history_text += f"{role}: {content}\n"
     prompt = f"""
-You are a hiring assistant.
+    You are a Hiring Assistant.
 
-STRICT RULES:
-- You MUST use tools for ALL actions
-- NEVER respond without tool usage
-- NEVER guess IDs (department_id, hiring_id, posting_id)
+    You can perform these actions:
 
-DECISION RULES:
+    1. Create hiring request
+    2. Get all hiring requests
+    3. Get hiring request by ID
+    4. Update hiring request
+    5. Delete hiring request
 
-Hiring Requests:
-- "create hiring request" → create_hiring_request
-- "list hiring requests" → get_hiring_requests
-- "hiring details" → get_hiring_request_by_id
-- "update hiring request" → update_hiring_request
-- "delete hiring request" → delete_hiring_request
+    =========================
+    RULES
+    =========================
 
-Job Postings:
-- "create job posting" → create_job_posting
-- "list job postings" → get_job_postings
-- "job posting details" → get_job_posting_by_id
+    - You MUST use tools for ALL operations
+    - NEVER respond without using a tool if data is needed
+    - NEVER ask for data when user wants to retrieve
 
-IMPORTANT:
-- If user says "create hiring request" → MUST call create_hiring_request DIRECTLY
-- DO NOT call get_hiring_requests before creating
-- DO NOT check existing data unless explicitly asked
+    =========================
+    INTENT RULES
+    =========================
 
-Conversation:
-{history_text}
+    If user says:
+    - "list hiring requests" → call get_hiring_requests
+    - "get all hiring" → call get_hiring_requests
+    - "show hiring requests" → call get_hiring_requests
 
-User:
-{user_input}
-"""
+    - "get hiring id X" → call get_hiring_request_by_id
 
-    # =========================
-    # 🤖 LLM CALL
-    # =========================
+    - "update hiring id X" → call update_hiring_request
+
+    - "delete hiring id X" → call delete_hiring_request
+
+    - "create hiring request" → follow create rules
+
+    =========================
+    CREATE RULE (ONLY FOR CREATE)
+    =========================
+
+    Required fields:
+    - department_id
+    - role_title
+    - manager_id
+    - required_skills
+    - experience_level
+    - budget_range
+
+    If missing:
+    → Ask ONLY missing fields
+
+    If complete:
+    → Call create_hiring_request
+
+    =========================
+    Conversation:
+    {history_text}
+
+    User:
+    {user_input}
+    """
+
     response = client.responses.create(
         model=MODEL_NAME,
         input=prompt,
@@ -198,17 +241,9 @@ User:
 
     output = response.output[0]
 
-    meta = {
-        "hiring_id": None,
-        "posting_id": None
-    }
-
-    # =========================
-    # ❌ Prevent hallucination
-    # =========================
     if output.type != "function_call":
-        return "⚠️ I couldn't perform that action. Please be more specific.", meta
-
+        # LLM will ask user for missing fields
+        return response.output_text, {}
     tool_name = output.name
     args = json.loads(output.arguments)
 
@@ -216,105 +251,63 @@ User:
     print("ARGS:", args)
 
     # =========================
-    # 🧠 SMART PRE-PROCESSING (KEY FIX)
-    # =========================
-    # Handle department name → ID resolution
-    if tool_name == "create_hiring_request" and "department_id" not in args:
-
-        departments = get_departments(token).get("data", [])
-
-        for dept in departments:
-            if dept["name"].lower() in user_input.lower():
-                args["department_id"] = dept["id"]
-                print("AUTO-RESOLVED DEPARTMENT:", dept["id"])
-                break
-
-        # 🔥 NOW CONTINUE EXECUTION (THIS WAS MISSING)
-        result = create_hiring_request(args, token)
-
-    if session and session.get("pending_hiring"):
-        if user_input.lower() in ["yes", "yes please", "go ahead"]:
-
-            args = session["pending_hiring"]
-            print("EXECUTING SAVED ACTION:", args)
-
-            result = create_hiring_request(args, token)
-
-            session.pop("pending_hiring", None)
-
-            return json.dumps(result, indent=2), {}
-
-    # =========================
-    # 🔧 TOOL EXECUTION
+    # 🔧 EXECUTE TOOL
     # =========================
     if tool_name == "create_hiring_request":
         result = create_hiring_request(args, token)
 
     elif tool_name == "get_hiring_requests":
-        result = get_hiring_requests(token, args)
+        result = get_hiring_requests(token, args if args else None)
 
     elif tool_name == "get_hiring_request_by_id":
         result = get_hiring_request_by_id(args["hiring_id"], token)
-        meta["hiring_id"] = args["hiring_id"]
 
     elif tool_name == "update_hiring_request":
-        hid = args["hiring_id"]
+        hiring_id = args["hiring_id"]
         data = {k: v for k, v in args.items() if k != "hiring_id"}
-        result = update_hiring_request(hid, data, token)
-        meta["hiring_id"] = hid
+        result = update_hiring_request(hiring_id, data, token)
 
     elif tool_name == "delete_hiring_request":
         result = delete_hiring_request(args["hiring_id"], token)
-        meta["hiring_id"] = args["hiring_id"]
 
-    # =========================
-    # 📌 JOB POSTINGS
-    # =========================
     elif tool_name == "create_job_posting":
         result = create_job_posting(args, token)
 
     elif tool_name == "get_job_postings":
-        result = get_job_postings(token, args)
+        result = get_job_postings(token)
 
     elif tool_name == "get_job_posting_by_id":
         result = get_job_posting_by_id(args["posting_id"], token)
-        meta["posting_id"] = args["posting_id"]
 
     elif tool_name == "update_job_posting":
-        pid = args["posting_id"]
+        posting_id = args["posting_id"]
         data = {k: v for k, v in args.items() if k != "posting_id"}
-        result = update_job_posting(pid, data, token)
-        meta["posting_id"] = pid
+        result = update_job_posting(posting_id, data, token)
 
     elif tool_name == "delete_job_posting":
         result = delete_job_posting(args["posting_id"], token)
-        meta["posting_id"] = args["posting_id"]
 
     else:
-        return "❌ Unknown tool", meta
+        return "❌ Unknown tool", {}
 
     # =========================
-    # 🎨 FORMAT RESPONSE (HR STYLE)
+    # 🎨 FORMAT RESPONSE (same pattern as HR)
     # =========================
     format_prompt = f"""
-You are a hiring assistant.
+You are a Hiring Assistant.
 
 User Request:
 {user_input}
 
-Format the API response accordingly.
+Format the API response clearly.
 
 STRICT RULES:
-- DO NOT change or invent data
-- DO NOT skip fields
+- DO NOT change data
+- DO NOT hallucinate
 
-FORMATTING RULES:
-- If multiple records → show list/table
-- If single record → structured readable format
-- Keep response clean and readable
-
-DATA LIMIT RULE:
-- If more than 10 records → show only first 10
+FORMATTING:
+- Lists → bullet points or table
+- Single → structured readable format
 
 API Response:
 {json.dumps(result)}
@@ -325,4 +318,4 @@ API Response:
         input=format_prompt
     )
 
-    return format_response.output_text, meta
+    return format_response.output_text, {}

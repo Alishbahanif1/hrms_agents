@@ -1,280 +1,133 @@
+# master_agent.py
 import json
-from core.config import MODEL_NAME, AZURE_ENDPOINT
 from core.session import get_session
-
 from agents.hr_agent import run_hr_agent
 from agents.department_agent import run_department_agent
-from agents.role_agent import run_roles_agent
 from agents.hiring_agent import run_hiring_agent
-
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
-
-
-# =========================
-# 🔹 Azure Client
-# =========================
-project_client = AIProjectClient(
-    endpoint=AZURE_ENDPOINT,
-    credential=DefaultAzureCredential()
-)
-
-client = project_client.get_openai_client()
-
+from agents.role_agent import run_roles_agent
+from core.config import MODEL_NAME
+from core.llm_client import client  # use single LLM client
 
 # =========================
-# 🧠 FORMAT DETECTOR
+# 🧠 HELPER: Check if user wants formatting
 # =========================
 def is_format_request(user_input: str):
+    keywords = ["bullet", "tabular", "table", "format", "list"]
     text = user_input.lower()
-    return any(word in text for word in [
-        "bullet", "bulleted", "bullets",
-        "table", "tabular",
-        "format", "list"
-    ])
-
+    return any(word in text for word in keywords)
 
 # =========================
-# 🧠 ROUTER (LLM + fallback)
+# 🧠 LLM ROUTER
 # =========================
-def detect_module(user_input: str, session):
-
+def detect_module(user_input: str, session: dict) -> str:
+    """
+    Uses LLM to detect intent/module from user input.
+    """
+    # Last few messages for context
     history = session.get("history", [])[-5:]
-
-    history_text = "\n".join([
-        f"{msg['role'].upper()}: {msg['content']}"
-        for msg in history if msg.get("content")
-    ])
+    history_text = ""
+    for msg in history:
+        role = msg["role"].upper()
+        content = str(msg["content"])
+        history_text += f"{role}: {content}\n"
 
     response = client.responses.create(
         model=MODEL_NAME,
         input=f"""
-You are a request router.
+You are a smart HRMS request router.
 
-Decide the module.
-
-Context:
-{history_text}
-
-User input:
-{user_input}
+Your task: Classify the user request into a single module.
+Modules:
+- hr → employees, payroll, leave, salary
+- department → CRUD departments
+- roles → CRUD roles
+- hiring → hiring requests, recruitment, job postings
+- format → only when user explicitly asks to reformat output (table, bullets, etc.)
 
 Rules:
-- hr → employees
-- department → departments
-- format → formatting request
-- roles → roles/permissions
-- hiring → hiring requests/job postings
-- sales → customers/orders
+- If user says "create hiring", "get hiring", "list hiring", "update hiring", → routing must be "hiring"
+- If user says "employee", "salary", "manager" → routing is "hr"
+- Only return "format" if user says explicitly "format", "table", "bullets", "convert"
 
 IMPORTANT:
-- If formatting requested → return "format"
+- Return only valid JSON: {{ "module": "<module_name>" }}
+- Do not add extra text
+- Never guess a module; default only to "hr" if LLM fails
 
-Return ONLY JSON:
-{{ "module": "hr" }}
-{{ "module": "roles" }}
-{{ "module": "hiring" }}
+Conversation History:
+{history_text}
+
+User Input:
+{user_input}
 """
-    )
+)
 
     try:
-        return json.loads(response.output_text.strip()).get("module", "hr")
-    except:
+        module = json.loads(response.output_text.strip()).get("module", "hr")
+        return module
+    except Exception:
         return "hr"
-
-
-# =========================
-# 🎨 FORMATTER (RE-FORMAT)
-# =========================
-def format_response_with_llm(raw_response: str, user_input: str):
-
-    prompt = f"""
-You are a helpful assistant.
-
-User request:
-{user_input}
-
-Reformat the data.
-
-RULES:
-- DO NOT change data
-- ONLY change format
-
-If bullets:
-• Name — Role
-
-If table:
-Return markdown table
-
-DATA:
-{raw_response}
-"""
-
-    response = client.responses.create(
-        model=MODEL_NAME,
-        input=prompt
-    )
-
-    return response.output_text
-
-
-# =========================
-# 🎨 FINAL FORMATTER
-# =========================
-def format_final_response(raw_response: str, user_input: str):
-
-    prompt = f"""
-You are a helpful HR assistant.
-
-User asked:
-{user_input}
-
-Convert the API response into a natural, human-friendly response.
-
-STRICT RULES:
-- DO NOT show JSON
-- Extract useful info only
-- Keep it short
-- Be conversational
-
-Examples:
-
-Create:
-→ "Department 'Finance' created successfully."
-
-List:
-→ bullet list or table
-
-Single:
-→ structured details
-
-DATA:
-{raw_response}
-"""
-
-    response = client.responses.create(
-        model=MODEL_NAME,
-        input=prompt
-    )
-
-    return response.output_text
-
 
 # =========================
 # 🚀 MASTER AGENT
 # =========================
 def run_master_agent(user_input: str, token: str, session_id: str):
-
     session = get_session(session_id)
 
-    # =========================
-    # 🧠 STORE USER MESSAGE
-    # =========================
-    session["history"].append({
-        "role": "user",
-        "content": user_input
-    })
+    # Store token
+    session["user"]["token"] = token
 
-    session["history"] = session["history"][-10:]
+    # Add user message to history
+    session["history"].append({"role": "user", "content": user_input})
+    session["history"] = session["history"][-5:]  # keep last 10 messages
 
     # =========================
-    # 🧠 ROUTING (fallback first)
+    # 🧠 ROUTING
     # =========================
-    text = user_input.lower()
-
-    if "department" in text:
-        module = "department"
-    elif "employee" in text:
-        module = "hr"
-    elif "role" in text:
-        module = "roles"
-    elif is_format_request(user_input):
+    if is_format_request(user_input):
         module = "format"
-    elif "hiring" in text or "job" in text:
-        module = "hiring"
     else:
         module = detect_module(user_input, session)
 
     print("ROUTED TO:", module)
 
     # =========================
-    # 🎨 FORMAT REQUEST
-    # =========================
-    if module == "format":
-
-        last_response = next(
-            (m["content"] for m in reversed(session["history"]) if m["role"] == "assistant"),
-            None
-        )
-
-        if not last_response:
-            return "⚠️ Nothing to format."
-
-        formatted = format_response_with_llm(last_response, user_input)
-
-        session["history"].append({
-            "role": "assistant",
-            "content": formatted
-        })
-
-        session["history"] = session["history"][-10:]
-
-        return formatted
-
-    # =========================
-    # 🔥 HR MODULE
+    # 🔥 HANDLE MODULES
     # =========================
     if module == "hr":
-
-        raw_response, meta = run_hr_agent(
-            user_input=user_input,
-            token=token,
-            session=session
-        )
-
-    # =========================
-    # 🔥 DEPARTMENT MODULE
-    # =========================
+        response, meta = run_hr_agent(user_input, token, session)
     elif module == "department":
-
-        raw_response, meta = run_department_agent(
-            user_input=user_input,
-            token=token,
-            session=session
-        )
-
+        response, meta = run_department_agent(user_input, token, session)
     elif module == "roles":
-
-        raw_response, meta = run_roles_agent(
-            user_input=user_input,
-            token=token,
-            session=session
-        )
-    
+        response, meta = run_roles_agent(user_input, token, session)
     elif module == "hiring":
-
-        raw_response, meta = run_hiring_agent(
-            user_input=user_input,
-            token=token,
-            session=session
+        response, meta = run_hiring_agent(user_input, token, session)
+    elif module == "format":
+        # Find last assistant response
+        last_response = next(
+            (msg["content"] for msg in reversed(session["history"]) if msg["role"] == "assistant"), 
+            None
         )
-
+        if not last_response:
+            return "⚠️ Nothing to format yet."
+        from agents.format_agent import format_response_with_llm
+        response = format_response_with_llm(last_response, user_input)
+        meta = {}
     else:
         return "❌ Could not determine module"
 
     # =========================
-    # 🎨 FINAL FORMAT (ALWAYS)
+    # 🧠 STORE ASSISTANT RESPONSE
     # =========================
-    formatted = format_final_response(raw_response, user_input)
-
-    # =========================
-    # 🧠 STORE ONLY FORMATTED
-    # =========================
-    session["history"].append({
-        "role": "assistant",
-        "content": formatted
-    })
-
+    session["history"].append({"role": "assistant", "content": response})
     session["history"] = session["history"][-10:]
 
-    return formatted
+    # Store last employee/department for context if available
+    if meta.get("employee_id"):
+        session["context"]["last_employee_id"] = meta["employee_id"]
+    if meta.get("department_id"):
+        session["context"]["last_department_id"] = meta["department_id"]
+
+    session["context"]["last_module"] = module
+
+    return response

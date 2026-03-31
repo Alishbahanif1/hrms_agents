@@ -19,3 +19,21 @@ AI-powered HR assistant built with:
 ---
 
 ## 🧠 Architecture
+
+
+
+User Input
+     │
+     ▼
+Master Agent (Intent Classification using LLM)
+     │
+     ├── Employee Agent → Employee Endpoints
+     ├── Department Agent → Department Endpoints
+     ├── Hiring Agent → Hiring Endpoints
+     ├── Roles Agent → Roles Endpoints
+     ├── Leave Agent → Leave Endpoints
+     ├── Training Agent → Training Endpoints
+     ├── Onboarding Agent → Onboarding Endpoints
+     ├── Resignation Agent → Resignation Endpoints
+     ├── Clearance Agent → Clearance Endpoints
+     └── Format Agent → Response formatting
