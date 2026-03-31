@@ -16,3 +16,5 @@ httpx
 rich
 dotenv
 streamlit
+streamlit-cookies-manager
+extra-streamlit-components

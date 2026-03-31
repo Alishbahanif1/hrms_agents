@@ -1,6 +1,7 @@
 import json
 from core.config import MODEL_NAME, AZURE_ENDPOINT
 from agents.hr_agent import run_hr_agent
+from agents.onboarding_agent import run_onboarding_agent
 
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -26,6 +27,7 @@ Classify user request into one module.
 
 Modules:
 - hr → employees, hiring, salary, leave
+- onboarding → onboarding, new employee setup, joining process
 - sales → customers, orders
 - admin → operations
 
@@ -58,6 +60,9 @@ def run_master_agent(user_input: str, token: str):
 
     if module == "hr":
         return run_hr_agent(user_input, token)
+    
+    elif module == "onboarding":
+        return run_onboarding_agent(user_input, token)
 
     elif module == "sales":
         return "🚧 Sales module coming soon"
