@@ -5,6 +5,7 @@ from agents.hr_agent import run_hr_agent
 from agents.department_agent import run_department_agent
 from agents.hiring_agent import run_hiring_agent
 from agents.role_agent import run_roles_agent
+from agents.resignation_agent import run_resignation_agent
 from core.config import MODEL_NAME
 from core.llm_client import client  # use single LLM client
 
@@ -42,12 +43,15 @@ Modules:
 - department → CRUD departments
 - roles → CRUD roles
 - hiring → hiring requests, recruitment, job postings
+- resignation → resignations, notice period, clearance, exit process
 - format → only when user explicitly asks to reformat output (table, bullets, etc.)
 
 Rules:
 - If user says "create hiring", "get hiring", "list hiring", "update hiring", → routing must be "hiring"
 - If user says "employee", "salary", "manager" → routing is "hr"
 - Only return "format" if user says explicitly "format", "table", "bullets", "convert"
+- If user says "resign", "resignation", "notice period", "apply resignation" → routing must be "resignation"
+- If user says "clearance", "exit clearance", "final clearance" → routing must be "resignation"
 
 IMPORTANT:
 - Return only valid JSON: {{ "module": "<module_name>" }}
@@ -84,8 +88,26 @@ def run_master_agent(user_input: str, token: str, session_id: str):
     # =========================
     # 🧠 ROUTING
     # =========================
+    text = user_input.lower()
+
     if is_format_request(user_input):
         module = "format"
+
+    elif "resign" in text or "resignation" in text or "notice" in text or "clearance" in text:
+        module = "resignation"
+
+    elif "hiring" in text or "job" in text:
+        module = "hiring"
+
+    elif "role" in text:
+        module = "roles"
+
+    elif "department" in text:
+        module = "department"
+
+    elif "employee" in text or "salary" in text or "manager" in text:
+        module = "hr"
+
     else:
         module = detect_module(user_input, session)
 
@@ -113,6 +135,8 @@ def run_master_agent(user_input: str, token: str, session_id: str):
         from agents.format_agent import format_response_with_llm
         response = format_response_with_llm(last_response, user_input)
         meta = {}
+    elif module == "resignation":
+        response, meta = run_resignation_agent(user_input, token, session)
     else:
         return "❌ Could not determine module"
 
