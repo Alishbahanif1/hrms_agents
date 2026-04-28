@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.api_client import (
+from utils.auth_api import (   # ✅ fixed import
     forgot_password_api,
     verify_otp_api,
     reset_password_api
@@ -38,17 +38,13 @@ def show_forgot_password():
     )
 
     # =========================
-    # 🧠 INIT STEP STATE
+    # 🧠 INIT STATE
     # =========================
     if "forgot_step" not in st.session_state:
         st.session_state["forgot_step"] = 1
 
     if "forgot_email" not in st.session_state:
         st.session_state["forgot_email"] = ""
-
-    # =========================
-    # 🧾 CARD
-    # =======================
 
     # =========================
     # 🔹 STEP 1: ENTER EMAIL
@@ -63,15 +59,15 @@ def show_forgot_password():
                 st.error("Email is required")
             else:
                 with st.spinner("Sending OTP..."):
-                    response, status = forgot_password_api(email)
+                    response = forgot_password_api(email)
 
-                if status == 200:
+                if response["success"]:
                     st.success("OTP sent to your email ✅")
                     st.session_state["forgot_email"] = email
                     st.session_state["forgot_step"] = 2
                     st.rerun()
                 else:
-                    st.error(response.get("detail") or response.get("message"))
+                    st.error(response.get("error") or "Failed to send OTP")
 
     # =========================
     # 🔹 STEP 2: VERIFY OTP
@@ -86,17 +82,17 @@ def show_forgot_password():
                 st.error("OTP is required")
             else:
                 with st.spinner("Verifying OTP..."):
-                    response, status = verify_otp_api(
+                    response = verify_otp_api(
                         st.session_state["forgot_email"],
                         otp
                     )
 
-                if status == 200:
+                if response["success"]:
                     st.success("OTP verified ✅")
                     st.session_state["forgot_step"] = 3
                     st.rerun()
                 else:
-                    st.error(response.get("detail") or response.get("message"))
+                    st.error(response.get("error") or "OTP verification failed")
 
     # =========================
     # 🔹 STEP 3: RESET PASSWORD
@@ -116,20 +112,19 @@ def show_forgot_password():
 
             else:
                 with st.spinner("Resetting password..."):
-                    response, status = reset_password_api(
+                    response = reset_password_api(
                         st.session_state["forgot_email"],
                         new_password
                     )
 
-                if status == 200:
+                if response["success"]:
                     st.success("Password reset successfully 🎉")
 
-                    # Reset flow
                     st.session_state["forgot_step"] = 1
                     st.session_state["auth_page"] = "login"
                     st.rerun()
                 else:
-                    st.error(response.get("detail") or response.get("message"))
+                    st.error(response.get("error") or "Reset failed")
 
     # =========================
     # 🔙 BACK BUTTON
@@ -138,6 +133,3 @@ def show_forgot_password():
         st.session_state["forgot_step"] = 1
         st.session_state["auth_page"] = "login"
         st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)

@@ -1,30 +1,32 @@
-import json
-from azure.identity import DefaultAzureCredential
-from azure.ai.projects import AIProjectClient
-
-from core.config import AZURE_ENDPOINT, MODEL_NAME
-from tools.employee_tools import (
-    create_employee,
-    get_employees,
-    get_employee_by_id,
-    update_employee,
-    delete_employee
-)
-
-# 🔹 Azure client
-project_client = AIProjectClient(
-    endpoint=AZURE_ENDPOINT,
-    credential=DefaultAzureCredential()
-)
-
-client = project_client.get_openai_client()
+from agents.base_agent import run_agent
+from tools.hr_tools import *
 
 
 # =========================
-# 🔥 TOOL SCHEMA
+# 🔥 TOOLS (FIXED FORMAT)
 # =========================
 
 tools = [
+
+    # =========================
+    # 👤 EMPLOYEES
+    # =========================
+    {
+        "type": "function",
+        "name": "get_employees",
+        "description": "Get all employees",
+        "parameters": {"type": "object", "properties": {}}
+    },
+    {
+        "type": "function",
+        "name": "get_employee_by_id",
+        "description": "Get employee by ID",
+        "parameters": {
+            "type": "object",
+            "properties": {"employee_id": {"type": "integer"}},
+            "required": ["employee_id"]
+        }
+    },
     {
         "type": "function",
         "name": "create_employee",
@@ -43,26 +45,8 @@ tools = [
     },
     {
         "type": "function",
-        "name": "get_employees",
-        "description": "Get all employees",
-        "parameters": {"type": "object", "properties": {}}
-    },
-    {
-        "type": "function",
-        "name": "get_employee_by_id",
-        "description": "Get employee by ID",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "employee_id": {"type": "integer"}
-            },
-            "required": ["employee_id"]
-        }
-    },
-    {
-        "type": "function",
         "name": "update_employee",
-        "description": "Update employee fields",
+        "description": "Update employee",
         "parameters": {
             "type": "object",
             "properties": {
@@ -71,11 +55,7 @@ tools = [
                 "email": {"type": "string"},
                 "personal_email": {"type": "string"},
                 "department_id": {"type": "integer"},
-                "role_id": {"type": "integer"},
-                "manager_id": {"type": "integer"},
-                "joining_date": {"type": "string"},
-                "salary": {"type": "number"},
-                "is_active": {"type": "boolean"}
+                "role_id": {"type": "integer"}
             },
             "required": ["employee_id"]
         }
@@ -86,85 +66,158 @@ tools = [
         "description": "Delete employee",
         "parameters": {
             "type": "object",
-            "properties": {
-                "employee_id": {"type": "integer"}
-            },
+            "properties": {"employee_id": {"type": "integer"}},
             "required": ["employee_id"]
+        }
+    },
+
+    # =========================
+    # 🏢 DEPARTMENTS
+    # =========================
+    {
+        "type": "function",
+        "name": "get_departments",
+        "description": "Get all departments",
+        "parameters": {"type": "object", "properties": {}}
+    },
+    {
+        "type": "function",
+        "name": "get_department_by_id",
+        "description": "Get department by ID",
+        "parameters": {
+            "type": "object",
+            "properties": {"department_id": {"type": "integer"}},
+            "required": ["department_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "create_department",
+        "description": "Create department",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            },
+            "required": ["name"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "update_department",
+        "description": "Update department",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "department_id": {"type": "integer"},
+                "name": {"type": "string"}
+            },
+            "required": ["department_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "delete_department",
+        "description": "Delete department",
+        "parameters": {
+            "type": "object",
+            "properties": {"department_id": {"type": "integer"}},
+            "required": ["department_id"]
+        }
+    },
+
+    # =========================
+    # 🧩 ROLES
+    # =========================
+    {
+        "type": "function",
+        "name": "get_roles",
+        "description": "Get all roles",
+        "parameters": {"type": "object", "properties": {}}
+    },
+    {
+        "type": "function",
+        "name": "get_role_by_id",
+        "description": "Get role by ID",
+        "parameters": {
+            "type": "object",
+            "properties": {"role_id": {"type": "integer"}},
+            "required": ["role_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "create_role",
+        "description": "Create role",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "level": {"type": "integer"},
+                "description": {"type": "string"}
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "update_role",
+        "description": "Update role",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "role_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "level": {"type": "integer"},
+                "description": {"type": "string"}
+            },
+            "required": ["role_id"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "delete_role",
+        "description": "Delete role",
+        "parameters": {
+            "type": "object",
+            "properties": {"role_id": {"type": "integer"}},
+            "required": ["role_id"]
         }
     }
 ]
 
 
 # =========================
-# 🚀 MAIN FUNCTION
+# 🧠 TOOL MAP
+# =========================
+
+tool_map = {
+
+    # Employees
+    "get_employees": lambda args, token: get_employees(token),
+    "get_employee_by_id": lambda args, token: get_employee(args["employee_id"], token),
+    "create_employee": lambda args, token: create_employee(args, token),
+    "update_employee": lambda args, token: update_employee(args["employee_id"], args, token),
+    "delete_employee": lambda args, token: delete_employee(args["employee_id"], token),
+
+    # Departments
+    "get_departments": lambda args, token: get_departments(token),
+    "get_department_by_id": lambda args, token: get_department(args["department_id"], token),
+    "create_department": lambda args, token: create_department(args, token),
+    "update_department": lambda args, token: update_department(args["department_id"], args, token),
+    "delete_department": lambda args, token: delete_department(args["department_id"], token),
+
+    # Roles
+    "get_roles": lambda args, token: get_roles(token),
+    "get_role_by_id": lambda args, token: get_role(args["role_id"], token),
+    "create_role": lambda args, token: create_role(args, token),
+    "update_role": lambda args, token: update_role(args["role_id"], args, token),
+    "delete_role": lambda args, token: delete_role(args["role_id"], token),
+}
+# =========================
+# 🚀 ENTRY
 # =========================
 
 def run_hr_agent(user_input: str, token: str):
-
-    response = client.responses.create(
-        model=MODEL_NAME,
-        input=user_input,
-        tools=tools,
-        tool_choice="auto"
-    )
-
-    output = response.output[0]
-
-    if output.type == "function_call":
-
-        tool_name = output.name
-        args = json.loads(output.arguments)
-
-        print("TOOL:", tool_name)
-        print("ARGS:", args)
-
-        if tool_name == "create_employee":
-            result = create_employee(args, token)
-
-        elif tool_name == "get_employees":
-            result = get_employees(token)
-
-        elif tool_name == "get_employee_by_id":
-            result = get_employee_by_id(args["employee_id"], token)
-
-        elif tool_name == "update_employee":
-            employee_id = args.get("employee_id")
-            data = {k: v for k, v in args.items() if k != "employee_id"}
-
-            if not data:
-                return "❌ Please specify fields to update"
-
-            # normalize
-            field_map = {
-                "name": "full_name",
-                "fullname": "full_name"
-            }
-
-            normalized_data = {
-                field_map.get(k, k): v for k, v in data.items()
-            }
-
-            result = update_employee(employee_id, normalized_data, token)
-
-        elif tool_name == "delete_employee":
-            result = delete_employee(args["employee_id"], token)
-
-        else:
-            return "❌ Unknown tool"
-
-        # 🔁 Send tool result back to LLM
-        final_response = client.responses.create(
-            model=MODEL_NAME,
-            previous_response_id=response.id,
-            input=[
-                {
-                    "type": "function_call_output",
-                    "call_id": output.call_id,
-                    "output": json.dumps(result)
-                }
-            ]
-        )
-
-        return final_response.output_text
-
-    return response.output_text
+    print("USER INPUT:", user_input)
+    return run_agent(user_input, tools, tool_map, token)

@@ -1,7 +1,7 @@
 import streamlit as st
 import extra_streamlit_components as stx
 from datetime import datetime, timedelta
-from utils.api_client import logout_api
+from utils.auth_api import logout_api
 
 
 # =========================

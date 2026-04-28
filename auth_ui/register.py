@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.api_client import register_api
+from utils.auth_api import register_api   # ✅ fixed import
 
 
 def show_register():
@@ -34,7 +34,7 @@ def show_register():
     )
 
     # =========================
-    # 📝 CARD
+    # 📝 UI
     # =========================
     st.markdown('<div class="register-title">📝 Register</div>', unsafe_allow_html=True)
 
@@ -48,7 +48,7 @@ def show_register():
     back_clicked = col2.button("Back to Login")
 
     # =========================
-    # 🧠 VALIDATION + API
+    # 🧠 LOGIC
     # =========================
     if register_clicked:
         if not invite_token or not password or not confirm_password:
@@ -59,21 +59,20 @@ def show_register():
 
         else:
             with st.spinner("Creating account..."):
-                response, status = register_api(invite_token, password)
+                response = register_api(invite_token, password)
 
-            if status == 201:
+            if response["success"]:
                 st.success("✅ Account created successfully!")
 
-                # Redirect to login
                 st.session_state["auth_page"] = "login"
                 st.rerun()
 
             else:
-                error_msg = (
-                    response.get("detail")
-                    or response.get("message")
-                    or str(response)
-                )
+                error_msg = response.get("error") or "Registration failed"
+
+                if isinstance(error_msg, dict):
+                    error_msg = error_msg.get("detail") or str(error_msg)
+
                 st.error(error_msg)
 
     # =========================
@@ -82,6 +81,3 @@ def show_register():
     if back_clicked:
         st.session_state["auth_page"] = "login"
         st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)

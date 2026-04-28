@@ -1,5 +1,7 @@
+from urllib import response
+
 import streamlit as st
-from utils.api_client import login_api
+from utils.auth_api import login_api   # ✅ fixed import
 from utils.auth_manager import save_token
 
 
@@ -44,31 +46,28 @@ def show_login():
             st.error("Please fill all fields")
         else:
             with st.spinner("Logging in..."):
-                response, status = login_api(email, password)
+                response = login_api(email, password)
 
-            if status == 200:
-                data = response.get("data")
-
-                if data and "access_token" in data:
-                    token = data["access_token"]
-
-                    # ✅ SET PAGE BEFORE saving token
+            if response["success"]:
+                data = response.get("data", {})
+                inner_data = data.get("data", {})
+                
+                if "access_token" in inner_data:
+                    token = inner_data["access_token"]
+                
                     st.session_state["page"] = "chat"
-
-                    # ✅ This handles rerun internally
                     save_token(token)
-
+                
                     st.success("Login successful 🎉")
-
                 else:
                     st.error(f"Unexpected response format: {response}")
-
             else:
-                error_msg = (
-                    response.get("detail")
-                    or response.get("message")
-                    or str(response)
-                )
+                error_msg = response.get("error") or "Login failed"
+
+                # optional cleanup
+                if isinstance(error_msg, dict):
+                    error_msg = error_msg.get("detail") or str(error_msg)
+
                 st.error(error_msg)
 
     # =========================
